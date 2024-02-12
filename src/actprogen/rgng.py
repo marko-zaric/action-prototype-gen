@@ -2,7 +2,6 @@ import numpy as np
 from scipy import spatial
 import networkx as nx
 from .RGNG_network import RGNG_Graph
-import matplotlib.pyplot as plt
 from sklearn import decomposition
 import statistics
 import copy
@@ -56,8 +55,6 @@ class RobustGrowingNeuralGas:
 
         for node in self.network.nodes():
             self.network.nodes[node]["prenode_ranking"] = 1
-
-        plt.style.use('ggplot')
 
     def find_nearest_units(self, observation):
         distance = []
@@ -302,19 +299,6 @@ class RobustGrowingNeuralGas:
             self.network.add_edge(r, q, age=0)
             self.network.add_edge(r, f, age=0)
             self.network.remove_edge(q, f)
-            
-            # plototypes = np.zeros((len(self.network.nodes), len(self.init_centers[0])))
-            # for n in self.network.nodes():
-            #     print("Node ", n, ":")
-            #     print(self.network.nodes[n]['vector'])
-            #     plototypes[n] = self.network.nodes[n]['vector']
-
-            # plototypes = np.array(plototypes)
-            # colors = ["yellow", "green", "blue", "purple", "red"]
-
-            # plt.scatter(INPUT.T[0], INPUT.T[1], c=INPUT.T[2], cmap=matplotlib.colors.ListedColormap(colors), s=10)
-            # plt.scatter(plototypes.T[0], plototypes.T[1],c="black", marker="s")
-            # plt.show()
                     
         return self.optimal_center#, actcenter, allmdlvalue
 
@@ -437,16 +421,6 @@ class RobustGrowingNeuralGas:
     def h_mean(self, a):
         return statistics.harmonic_mean(a)
 
-    def plot_network(self, file_path):
-        plt.clf()
-        plt.scatter(self.data[:, 0], self.data[:, 1])
-        node_pos = {}
-        for u in self.network.nodes():
-            vector = self.network.nodes[u]['vector']
-            node_pos[u] = (vector[0], vector[1])
-        nx.draw(self.network, pos=node_pos)
-        plt.draw()
-        plt.savefig(file_path)
 
     def number_of_clusters(self):
         return nx.number_connected_components(self.network)
@@ -456,10 +430,8 @@ class RobustGrowingNeuralGas:
         clustered_data = []
         for key in self.optimal_receptive_field.keys():
             vectors = np.array(self.optimal_receptive_field[key]['input'])
-            plt.scatter(vectors.T[0], vectors.T[1], c=color[key], s=10)
             for obs in self.optimal_receptive_field[key]['input']:
                 clustered_data.append((obs, key))
-        plt.show()
             
         return clustered_data
 
@@ -471,21 +443,6 @@ class RobustGrowingNeuralGas:
             transformed_clustered_data.append((transformed_observations[i], clustered_data[i][1]))
         return transformed_clustered_data
 
-    def plot_clusters(self, clustered_data):
-        number_of_clusters = len(self.optimal_network.nodes())
-        # print("NUMBER OF CLUSTERS: ", number_of_clusters)
-        plt.clf()
-        plt.title('Cluster affectation')
-        color = ['r', 'b', 'g', 'k', 'm', 'r', 'b', 'g', 'k', 'm']
-        for i in range(number_of_clusters):
-            # print(i)
-            observations = [observation for observation, s in clustered_data if s == i]
-            if len(observations) > 0:
-                observations = np.array(observations)
-                plt.scatter(observations[:, 0], observations[:, 1], color=color[i], label='cluster #'+str(i))
-        plt.legend()
-        plt.show()
-        #plt.savefig('visualization/clusters.png')
 
     def compute_global_error(self):
         global_error = 0
