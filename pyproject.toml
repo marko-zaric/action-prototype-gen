@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "actprogen"
+version = "0.0.1"
+authors = [
+  { name="Marko Zaric", email="m-zaric@hotmail.com" },
+]
+description = "Package for contiuous motion space discretization"
+readme = "README.md"
+requires-python = ">=3.8.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "pandas",
+  "numpy",
+  "scikit-learn",
+  "networkx",
+]
+
+[project.urls]
+Homepage = "https://github.com/marko-zaric/action-prototype-gen"
+Issues = "https://github.com/marko-zaric/action-prototype-gen/issues"

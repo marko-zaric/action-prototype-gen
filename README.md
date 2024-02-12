@@ -1,1 +1,1 @@
-# action-prototype-gen
+# Motion space discretization package
