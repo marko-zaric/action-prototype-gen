@@ -49,70 +49,38 @@ class EffectActionPrototypes:
         self.action_prototypes = None
         self.m_samples_labeled = None
         self.prototypes_per_label = None
-        self.cluster_labels = None
 
         self.__pre_process = None
+        self.__prototype_per_cluster_limit = None
 
     def generate(
         self,
         effect_dimensions: list,
+        limit_prototypes_per_cluster=10,
     ) -> np.ndarray:
         """
         Starts prototype generation and returns prototypes. Depending on the number of
         effect dimensions histogram binning or K-Means clustering is used on the effect
         dimensions of the data to categorize the motion samples.
         """
+        self.__prototype_per_cluster_limit = limit_prototypes_per_cluster
         # Assert effect_dimensions list
         if len(effect_dimensions) == 1:
-            # histogram
-            hist, bin_edges = np.histogram(self.motion_samples[effect_dimensions[0]])
-
-            label = 0
-            cluster_labels = {}
-            for i, count in enumerate(hist):
-                if count != 0:
-                    cluster_labels[label] = (bin_edges[i], bin_edges[i + 1])
-                    label += 1
-
-            self.m_samples_labeled = copy(self.motion_samples)
-            self.m_samples_labeled["cluster_label"] = self.m_samples_labeled[
-                effect_dimensions[0]
-            ].apply(lambda x: self.__find_position_hist(x, cluster_labels))
-
-            self.__generate_prototypes(effect_dimensions)
-
+            cluster_labels = self.__bin_histogram_samples(effect_dimensions)
         elif len(effect_dimensions) > 1:
-            # kmeans
-            X = np.array(self.motion_samples[effect_dimensions])
+            cluster_labels = self.__kmeans_effect_clustering(effect_dimensions)
 
-            range_n_clusters = [3, 4, 5, 6]
-            best_score = 0
-            best_num_of_clusters = 0
-            for n_clusters in range_n_clusters:
-                kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10).fit(X)
-                silhouette_avg = silhouette_score(X, kmeans.labels_)
-
-                if best_score < silhouette_avg:
-                    best_score = silhouette_avg
-                    best_num_of_clusters = n_clusters
-
-            kmeans = KMeans(
-                n_clusters=best_num_of_clusters, random_state=0, n_init=10
-            ).fit(X)
-
-            self.m_samples_labeled = self.motion_samples
-            self.m_samples_labeled.loc[:, ("cluster_label")] = kmeans.labels_
-            self.cluster_labels = set(kmeans.labels_)
-
-            self.__generate_prototypes(effect_dimensions)
+        self.__generate_prototypes(effect_dimensions, cluster_labels)
+        return self.action_prototypes
 
     def __generate_prototypes(
         self,
         effect_dimensions: list,
-    ) -> np.ndarray:
+        cluster_labels: dict,
+    ) -> None:
         # Dynamic prototypes per cluster
         mean_stds = []
-        for i in self.cluster_labels:
+        for i in cluster_labels:
             cluster_samples = self.m_samples_labeled[
                 self.m_samples_labeled["cluster_label"] == i
             ]
@@ -121,16 +89,21 @@ class EffectActionPrototypes:
             )
 
         mean_stds = np.stack(mean_stds)
-
         mean_std_all_dims = np.add.reduce(mean_stds, axis=1)
         mean_std_all_dims = mean_std_all_dims / np.max(mean_std_all_dims, axis=(0, 1))
         cv = mean_std_all_dims.T[1] / mean_std_all_dims.T[0]
+        cv = np.array([min(x, 0.999999) for x in cv])
         max_prototypes_per_cluster = (1 - cv) * mean_std_all_dims.T[1]
         max_prototypes_per_cluster = max_prototypes_per_cluster / np.min(
             max_prototypes_per_cluster
         )
         max_prototypes_per_cluster = np.floor(max_prototypes_per_cluster)
-
+        max_prototypes_per_cluster = np.array(
+            [
+                min(x, self.__prototype_per_cluster_limit)
+                for x in max_prototypes_per_cluster
+            ]
+        )
         self.prototypes_per_label = {}
         self.__pre_process = StandardScaler()
         scaled_m_samples = deepcopy(self.m_samples_labeled)
@@ -139,10 +112,10 @@ class EffectActionPrototypes:
         )
 
         for cluster_label, num_prototypes in zip(
-            self.cluster_labels, max_prototypes_per_cluster
+            cluster_labels, max_prototypes_per_cluster
         ):
             if num_prototypes == 1:
-                self.__single_prototype_per_class(cluster_label)
+                self.__single_prototype_per_class(cluster_label, effect_dimensions)
             else:
                 self.__multi_prototypes(
                     num_prototypes,
@@ -152,30 +125,42 @@ class EffectActionPrototypes:
                     cluster_label,
                 )
 
-    def __single_prototype_per_class(self, cluster_label):
+    def __single_prototype_per_class(
+        self, cluster_label: dict, effect_dimensions: list
+    ) -> None:
         single_cluster_df = self.m_samples_labeled[
             self.m_samples_labeled["cluster_label"] == cluster_label
         ]
-        cluster_action_means = (
-            single_cluster_df[self.motion_dimensions].mean().to_numpy()
+        cluster_effect_means = single_cluster_df[effect_dimensions].mean().to_numpy()
+
+        closest_motion_to_effect_mean = (
+            abs(single_cluster_df[effect_dimensions] - cluster_effect_means)
+            .sum(axis=1)
+            .argmin()
         )
 
-        if self.action_prototypes is None:
-            self.action_prototypes = cluster_action_means
-        else:
-            self.action_prototypes = np.vstack(
-                (self.action_prototypes, cluster_action_means)
-            )
-        self.prototypes_per_label[cluster_label] = cluster_action_means
+        prototype = single_cluster_df[self.motion_dimensions].iloc[
+            closest_motion_to_effect_mean
+        ]
 
-    def __multi_prototypes(self, num_prototypes, cluster_data, cluster_label):
+        if self.action_prototypes is None:
+            self.action_prototypes = prototype
+        else:
+            self.action_prototypes = np.vstack((self.action_prototypes, prototype))
+        self.prototypes_per_label[cluster_label] = prototype
+
+    def __multi_prototypes(
+        self,
+        num_prototypes: int,
+        cluster_data: pd.DataFrame,
+        cluster_label: int,
+    ) -> None:
         # RGNG
         data_np = cluster_data[self.motion_dimensions].to_numpy()
         rgng = RobustGrowingNeuralGas(
             input_data=data_np, max_number_of_nodes=num_prototypes, real_num_clusters=1
         )
         resulting_centers = rgng.fit_network(a_max=100, passes=20)
-        # resulting_centers = rgng.fit_network(a_max=100, passes=25)
         local_prototype = self.__pre_process.inverse_transform(resulting_centers)
         if self.action_prototypes is None:
             self.action_prototypes = local_prototype
@@ -186,7 +171,54 @@ class EffectActionPrototypes:
             )
             self.prototypes_per_label[cluster_label] = local_prototype
 
-    def __encode_mean_std(self, dfs, effects):
+    def __bin_histogram_samples(self, effect_dimensions: list) -> None:
+        hist, bin_edges = np.histogram(self.motion_samples[effect_dimensions[0]])
+
+        label = 0
+        cluster_labels_with_edges = {}
+        cluster_labels = []
+        for i, count in enumerate(hist):
+            if count != 0:
+                cluster_labels_with_edges[label] = (bin_edges[i], bin_edges[i + 1])
+                cluster_labels.append(label)
+                label += 1
+
+        self.m_samples_labeled = copy(self.motion_samples)
+        self.m_samples_labeled["cluster_label"] = self.m_samples_labeled[
+            effect_dimensions[0]
+        ].apply(lambda x: self.__find_position_hist(x, cluster_labels_with_edges))
+
+        return set(cluster_labels)
+
+    def __kmeans_effect_clustering(self, effect_dimensions: list) -> None:
+        kmeans_input = np.array(self.motion_samples[effect_dimensions])
+
+        range_n_clusters = [3, 4, 5, 6]
+        best_score = 0
+        best_num_of_clusters = 0
+
+        for n_clusters in range_n_clusters:
+            kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10).fit(
+                kmeans_input
+            )
+            silhouette_avg = silhouette_score(kmeans_input, kmeans.labels_)
+            if best_score < silhouette_avg:
+                best_score = silhouette_avg
+                best_num_of_clusters = n_clusters
+
+        kmeans = KMeans(n_clusters=best_num_of_clusters, random_state=0, n_init=10).fit(
+            kmeans_input
+        )
+
+        self.m_samples_labeled = self.motion_samples
+        self.m_samples_labeled.loc[:, ("cluster_label")] = kmeans.labels_
+        return set(kmeans.labels_)
+
+    def __encode_mean_std(
+        self,
+        dfs,
+        effects,
+    ) -> None:
         for df in dfs:
             df_effect = df[effects]
             effect_mean = df_effect.mean()
@@ -199,7 +231,8 @@ class EffectActionPrototypes:
 
             return effect_array
 
-    def __find_position_hist(self, value, dict_labels):
+    def __find_position_hist(self, value, dict_labels) -> None:
         for key, border in dict_labels.items():
-            if border[0] <= value and value <= border[1]:
+            if border[0] <= value <= border[1]:
                 return key
+        raise ValueError("No key found in histogram bining for value" + str(value))
