@@ -8,7 +8,7 @@ from copy import copy, deepcopy
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import davies_bouldin_score
 from sklearn.preprocessing import StandardScaler
 from .rgng import RobustGrowingNeuralGas
 
@@ -65,9 +65,9 @@ class EffectActionPrototypes:
         """
         self.__prototype_per_cluster_limit = limit_prototypes_per_cluster
         # Assert effect_dimensions list
-        if len(effect_dimensions) == 1:
-            cluster_labels = self.__bin_histogram_samples(effect_dimensions)
-        elif len(effect_dimensions) > 1:
+        if len(effect_dimensions) == 1 and len(effect_dimensions[0]) == 1:
+            cluster_labels = self.__bin_histogram_samples(effect_dimensions[0])
+        else:
             cluster_labels = self.__kmeans_effect_clustering(effect_dimensions)
 
         self.__generate_prototypes(effect_dimensions, cluster_labels)
@@ -78,6 +78,7 @@ class EffectActionPrototypes:
         effect_dimensions: list,
         cluster_labels: dict,
     ) -> None:
+        effect_dimensions = effect_dimensions[0]
         # Dynamic prototypes per cluster
         mean_stds = []
         for i in cluster_labels:
@@ -91,9 +92,12 @@ class EffectActionPrototypes:
         mean_stds = np.stack(mean_stds)
         mean_std_all_dims = np.add.reduce(mean_stds, axis=1)
         mean_std_all_dims = mean_std_all_dims / np.max(mean_std_all_dims, axis=(0, 1))
+
         cv = mean_std_all_dims.T[1] / mean_std_all_dims.T[0]
         cv = np.array([min(x, 0.999999) for x in cv])
-        max_prototypes_per_cluster = (1 - cv) * mean_std_all_dims.T[1]
+        max_prototypes_per_cluster = (
+            (1 - cv) * self.__prototype_per_cluster_limit * mean_std_all_dims.T[1]
+        )
         max_prototypes_per_cluster = max_prototypes_per_cluster / np.min(
             max_prototypes_per_cluster
         )
@@ -191,21 +195,25 @@ class EffectActionPrototypes:
         return set(cluster_labels)
 
     def __kmeans_effect_clustering(self, effect_dimensions: list) -> None:
-        kmeans_input = np.array(self.motion_samples[effect_dimensions])
+        flatten_effect_dims = []
+        for e in effect_dimensions:
+            flatten_effect_dims = flatten_effect_dims + e
 
-        range_n_clusters = [3, 4, 5, 6]
-        best_score = 0
+        kmeans_input = np.array(self.motion_samples[flatten_effect_dims])
+        norm_factor = np.max(abs(kmeans_input), axis=0)
+        kmeans_input = kmeans_input / norm_factor
+
+        range_n_clusters = [3, 4, 5, 6, 7, 8]
+        best_score = np.inf
         best_num_of_clusters = 0
-
         for n_clusters in range_n_clusters:
-            kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10).fit(
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10).fit(
                 kmeans_input
             )
-            silhouette_avg = silhouette_score(kmeans_input, kmeans.labels_)
-            if best_score < silhouette_avg:
-                best_score = silhouette_avg
+            dbi = davies_bouldin_score(kmeans_input, kmeans.labels_)
+            if dbi < best_score:
+                best_score = dbi
                 best_num_of_clusters = n_clusters
-
         kmeans = KMeans(n_clusters=best_num_of_clusters, random_state=0, n_init=10).fit(
             kmeans_input
         )
