@@ -11,6 +11,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import davies_bouldin_score
 from sklearn.preprocessing import StandardScaler
 from .rgng import RobustGrowingNeuralGas
+import matplotlib.pyplot as plt 
 
 
 class EffectActionPrototypes:
@@ -66,8 +67,10 @@ class EffectActionPrototypes:
         self.__prototype_per_cluster_limit = limit_prototypes_per_cluster
         # Assert effect_dimensions list
         if len(effect_dimensions) == 1 and len(effect_dimensions[0]) == 1:
+            #print('Histogram effect clustering')
             cluster_labels = self.__bin_histogram_samples(effect_dimensions[0])
         else:
+            #print('Kmeans effect clustering')
             cluster_labels = self.__kmeans_effect_clustering(effect_dimensions)
 
         self.__generate_prototypes(effect_dimensions, cluster_labels)
@@ -164,7 +167,7 @@ class EffectActionPrototypes:
         rgng = RobustGrowingNeuralGas(
             input_data=data_np, max_number_of_nodes=num_prototypes, real_num_clusters=1
         )
-        resulting_centers = rgng.fit_network(a_max=100, passes=20)
+        resulting_centers = rgng.fit_network(a_max=100, passes=20) #100 20
         local_prototype = self.__pre_process.inverse_transform(resulting_centers)
         if self.action_prototypes is None:
             self.action_prototypes = local_prototype
@@ -222,6 +225,26 @@ class EffectActionPrototypes:
         self.m_samples_labeled.loc[:, ("cluster_label")] = kmeans.labels_
         return set(kmeans.labels_)
 
+
+    def plot_effect_clusters(self):
+        plt.scatter(self.m_samples_labeled.magnitude, 
+                    self.m_samples_labeled.angle, 
+                    c=list(map(self.color_picker,self.m_samples_labeled['cluster_label'])), s=10)
+        plt.show()
+
+
+    def plot_effect_clusters_with_prototypes(self):
+        plt.scatter(self.m_samples_labeled.magnitude, 
+                    self.m_samples_labeled.angle, 
+                    c=list(map(self.color_picker,self.m_samples_labeled['cluster_label'])), s=10)
+        
+        for i, label in enumerate(set(self.m_samples_labeled['cluster_label'])):
+            local_ap = self.prototypes_per_label[label]      
+            plt.scatter(local_ap.T[0], local_ap.T[1], marker="^", s=100, color=self.color_picker(i), edgecolors='black')
+        
+        plt.show()
+
+
     def __encode_mean_std(
         self,
         dfs,
@@ -244,3 +267,8 @@ class EffectActionPrototypes:
             if border[0] <= value <= border[1]:
                 return key
         raise ValueError("No key found in histogram bining for value" + str(value))
+    
+    @staticmethod
+    def color_picker(x):
+        colors = ['red', 'green', 'blue', 'magenta', 'yellow', 'pink', 'cyan']
+        return colors[x]
