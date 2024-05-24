@@ -54,6 +54,8 @@ class EffectActionPrototypes:
         self.__pre_process = None
         self.__prototype_per_cluster_limit = None
 
+        self.fixed_number_of_prototypes = None
+
     def generate(
         self,
         effect_dimensions: list,
@@ -83,34 +85,38 @@ class EffectActionPrototypes:
     ) -> None:
         effect_dimensions = effect_dimensions[0]
         # Dynamic prototypes per cluster
-        mean_stds = []
-        for i in cluster_labels:
-            cluster_samples = self.m_samples_labeled[
-                self.m_samples_labeled["cluster_label"] == i
-            ]
-            mean_stds.append(
-                self.__encode_mean_std([cluster_samples], effect_dimensions)
+        if self.fixed_number_of_prototypes is None:
+            mean_stds = []
+            for i in cluster_labels:
+                cluster_samples = self.m_samples_labeled[
+                    self.m_samples_labeled["cluster_label"] == i
+                ]
+                mean_stds.append(
+                    self.__encode_mean_std([cluster_samples], effect_dimensions)
+                )
+
+            mean_stds = np.stack(mean_stds)
+            mean_std_all_dims = np.add.reduce(mean_stds, axis=1)
+            mean_std_all_dims = mean_std_all_dims / np.max(mean_std_all_dims, axis=(0, 1))
+
+            cv = mean_std_all_dims.T[1] / mean_std_all_dims.T[0]
+            cv = np.array([min(x, 0.999999) for x in cv])
+            max_prototypes_per_cluster = (
+                (1 - cv) * self.__prototype_per_cluster_limit * mean_std_all_dims.T[1]
             )
-
-        mean_stds = np.stack(mean_stds)
-        mean_std_all_dims = np.add.reduce(mean_stds, axis=1)
-        mean_std_all_dims = mean_std_all_dims / np.max(mean_std_all_dims, axis=(0, 1))
-
-        cv = mean_std_all_dims.T[1] / mean_std_all_dims.T[0]
-        cv = np.array([min(x, 0.999999) for x in cv])
-        max_prototypes_per_cluster = (
-            (1 - cv) * self.__prototype_per_cluster_limit * mean_std_all_dims.T[1]
-        )
-        max_prototypes_per_cluster = max_prototypes_per_cluster / np.min(
-            max_prototypes_per_cluster
-        )
-        max_prototypes_per_cluster = np.floor(max_prototypes_per_cluster)
-        max_prototypes_per_cluster = np.array(
-            [
-                min(x, self.__prototype_per_cluster_limit)
-                for x in max_prototypes_per_cluster
-            ]
-        )
+            max_prototypes_per_cluster = max_prototypes_per_cluster / np.min(
+                max_prototypes_per_cluster
+            )
+            max_prototypes_per_cluster = np.floor(max_prototypes_per_cluster)
+            max_prototypes_per_cluster = np.array(
+                [
+                    min(x, self.__prototype_per_cluster_limit)
+                    for x in max_prototypes_per_cluster
+                ]
+            )
+        else:
+            max_prototypes_per_cluster = [3] * len(cluster_labels)
+        
         self.prototypes_per_label = {}
         self.__pre_process = StandardScaler()
         scaled_m_samples = deepcopy(self.m_samples_labeled)
