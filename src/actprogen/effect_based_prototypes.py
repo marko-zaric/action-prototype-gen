@@ -212,7 +212,7 @@ class EffectActionPrototypes:
         norm_factor = np.max(abs(kmeans_input), axis=0)
         kmeans_input = kmeans_input / norm_factor
 
-        range_n_clusters = [3, 4, 5, 6, 7, 8]
+        range_n_clusters = [3, 4, 5, 6, 7, 8, 9, 10]
         best_score = np.inf
         best_num_of_clusters = 0
         for n_clusters in range_n_clusters:
@@ -220,6 +220,7 @@ class EffectActionPrototypes:
                 kmeans_input
             )
             dbi = davies_bouldin_score(kmeans_input, kmeans.labels_)
+            print("Clusters", n_clusters, "score", dbi)
             if dbi < best_score:
                 best_score = dbi
                 best_num_of_clusters = n_clusters
