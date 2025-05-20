@@ -44,22 +44,37 @@ class EffectActionPrototypes:
         self,
         motion_samples: pd.DataFrame,
         motion_dimensions: list,
+        log_level=None, # 'DEBUG' for messages
     ) -> None:
         self.motion_samples = copy(motion_samples)
         self.motion_dimensions = motion_dimensions
         self.action_prototypes = None
         self.m_samples_labeled = None
         self.prototypes_per_label = None
+        self.fixed_number_of_prototypes = None
 
         self.__pre_process = None
         self.__prototype_per_cluster_limit = None
 
-        self.fixed_number_of_prototypes = None
+        if log_level == 'DEBUG':
+            self.log_level = 'DEBUG'
+        else:
+            self.log_level = 'INFO'
+
+    def log(self, *args):
+        """Always print info-level messages."""
+        print(f"[INFO]:", *args)
+
+    def log_debug(self, *args):
+        """Only print debug messages if log_level is DEBUG."""
+        if self.log_level == 'DEBUG':
+            print(f"[DEBUG]:", *args)
 
     def generate(
         self,
         effect_dimensions: list,
         limit_prototypes_per_cluster=10,
+        fixed_number_of_prototypes=None
     ) -> np.ndarray:
         """
         Starts prototype generation and returns prototypes. Depending on the number of
@@ -67,6 +82,7 @@ class EffectActionPrototypes:
         dimensions of the data to categorize the motion samples.
         """
         self.__prototype_per_cluster_limit = limit_prototypes_per_cluster
+        self.fixed_number_of_prototypes = fixed_number_of_prototypes
         # Assert effect_dimensions list
         if len(effect_dimensions) == 1 and len(effect_dimensions[0]) == 1:
             #print('Histogram effect clustering')
@@ -86,7 +102,7 @@ class EffectActionPrototypes:
         effect_dimensions = effect_dimensions[0]
         # Dynamic prototypes per cluster
         if self.fixed_number_of_prototypes is None:
-            print("No fixed protos")
+            self.log_debug("Number of prototypes not fixed prototypes")
             mean_stds = []
             for i in cluster_labels:
                 cluster_samples = self.m_samples_labeled[
@@ -129,10 +145,10 @@ class EffectActionPrototypes:
             cluster_labels, max_prototypes_per_cluster
         ):
             if num_prototypes == 1:
-                print("Label:", cluster_label, '#prototypes:', num_prototypes)
+                self.log_debug("Label:", cluster_label, '#prototypes:', num_prototypes)
                 self.__single_prototype_per_class(cluster_label, effect_dimensions)
             else:
-                print("Label:", cluster_label, '#prototypes:', num_prototypes)
+                self.log_debug("Label:", cluster_label, '#prototypes:', num_prototypes)
                 self.__multi_prototypes(
                     num_prototypes,
                     scaled_m_samples[
@@ -223,7 +239,7 @@ class EffectActionPrototypes:
                 kmeans_input
             )
             dbi = davies_bouldin_score(kmeans_input, kmeans.labels_)
-            print("Clusters", n_clusters, "score", dbi)
+            self.log_debug("Clusters", n_clusters, "score", dbi)
             if dbi < best_score:
                 best_score = dbi
                 best_num_of_clusters = n_clusters
@@ -233,7 +249,7 @@ class EffectActionPrototypes:
 
         self.m_samples_labeled = self.motion_samples
         self.m_samples_labeled.loc[:, ("cluster_label")] = kmeans.labels_
-        print("labels:", set(kmeans.labels_))
+        self.log_debug("labels:", set(kmeans.labels_))
         return set(kmeans.labels_)
 
 
