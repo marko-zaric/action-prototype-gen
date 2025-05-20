@@ -21,6 +21,7 @@ dependencies = [
   "numpy",
   "scikit-learn",
   "networkx",
+  "matplotlib"
 ]
 
 [project.urls]
