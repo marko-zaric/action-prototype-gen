@@ -33,9 +33,11 @@ Lastly import the Prototype Generator and create the discrete action prototypes:
 
 ```python
 from actprogen import effect_based_prototypes
-prototype_generator = effect_based_prototypes.EffectActionPrototypes(df_data, motion_dims)
-prototypes = prototype_generator.generate(effect_dimensions=effect_dims)
+prototype_generator = effect_based_prototypes.EffectActionPrototypes(df_data, motion_dims,log_level='INFO')
+prototypes = prototype_generator.generate(effect_dimensions=effect_dims, fixed_number_of_prototypes=None)
 ```
+- Setting log_level to 'DEBUG' adds sanity check print messages
+- fixed_number_of_prototypes to None uses the CV metric from the paper and if you set it to a number all cluster have the same number of prototypes.
 
 To vizualize the result for this specific example you can use this script:
 
