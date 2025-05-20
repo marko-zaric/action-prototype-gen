@@ -86,6 +86,7 @@ class EffectActionPrototypes:
         effect_dimensions = effect_dimensions[0]
         # Dynamic prototypes per cluster
         if self.fixed_number_of_prototypes is None:
+            print("No fixed protos")
             mean_stds = []
             for i in cluster_labels:
                 cluster_samples = self.m_samples_labeled[
@@ -115,7 +116,7 @@ class EffectActionPrototypes:
                 ]
             )
         else:
-            max_prototypes_per_cluster = [3] * len(cluster_labels)
+            max_prototypes_per_cluster = [self.fixed_number_of_prototypes] * len(cluster_labels)
         
         self.prototypes_per_label = {}
         self.__pre_process = StandardScaler()
@@ -128,8 +129,10 @@ class EffectActionPrototypes:
             cluster_labels, max_prototypes_per_cluster
         ):
             if num_prototypes == 1:
+                print("Label:", cluster_label, '#prototypes:', num_prototypes)
                 self.__single_prototype_per_class(cluster_label, effect_dimensions)
             else:
+                print("Label:", cluster_label, '#prototypes:', num_prototypes)
                 self.__multi_prototypes(
                     num_prototypes,
                     scaled_m_samples[
@@ -160,7 +163,7 @@ class EffectActionPrototypes:
             self.action_prototypes = prototype
         else:
             self.action_prototypes = np.vstack((self.action_prototypes, prototype))
-        self.prototypes_per_label[cluster_label] = prototype
+        self.prototypes_per_label[cluster_label] = prototype.to_numpy()
 
     def __multi_prototypes(
         self,
@@ -212,7 +215,7 @@ class EffectActionPrototypes:
         norm_factor = np.max(abs(kmeans_input), axis=0)
         kmeans_input = kmeans_input / norm_factor
 
-        range_n_clusters = [3, 4, 5, 6, 7, 8]
+        range_n_clusters = [3, 4, 5, 6, 7, 8, 9, 10]
         best_score = np.inf
         best_num_of_clusters = 0
         for n_clusters in range_n_clusters:
@@ -220,6 +223,7 @@ class EffectActionPrototypes:
                 kmeans_input
             )
             dbi = davies_bouldin_score(kmeans_input, kmeans.labels_)
+            print("Clusters", n_clusters, "score", dbi)
             if dbi < best_score:
                 best_score = dbi
                 best_num_of_clusters = n_clusters
@@ -229,6 +233,7 @@ class EffectActionPrototypes:
 
         self.m_samples_labeled = self.motion_samples
         self.m_samples_labeled.loc[:, ("cluster_label")] = kmeans.labels_
+        print("labels:", set(kmeans.labels_))
         return set(kmeans.labels_)
 
 
